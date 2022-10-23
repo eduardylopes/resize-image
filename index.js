@@ -1,15 +1,14 @@
-import { S3 } from '@aws-sdk/client-s3';
-import { readFileAsync, unlink } from 'fs';
-import { resize } from 'imagemagick';
-import { tmpdir } from 'os';
-import { promisify } from 'util';
-import uuidv4 from 'uuid/v4';
+const { S3 } = require('aws-sdk');
+const { readFile, unlink } = require('fs/promises');
 
-const resizeAsync = promisify(resize);
+const Jimp = require('jimp');
+const { tmpdir } = require('os');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
 const s3 = new S3({ region: 'sa-east-1' });
 
-export async function handler(event) {
+exports.handler = async (event) => {
   const filesProcessed = event.Records.map(async (record) => {
     const bucket = record.s3.bucket.name;
     const filename = record.s3.object.key;
@@ -19,19 +18,17 @@ export async function handler(event) {
       Bucket: bucket,
       Key: filename,
     };
-    const inputData = await s3.getObject(params).promise();
+
+    const { Body: imageBuffer } = await s3.getObject(params).promise();
 
     // Resize the file
-    const tempFile = tmpdir() + '/' + uuidv4() + '.jpg';
-    const resizeArgs = {
-      srcData: inputData.Body,
-      dstPath: tempFile,
-      width: 150,
-    };
-    await resizeAsync(resizeArgs);
+    const tempFile = path.join(tmpdir(), `${uuidv4()}.jpg`);
+    const image = await Jimp.read(imageBuffer);
+    image.resize(250, 250);
+    await image.writeAsync(tempFile);
 
     // Read the resized file
-    const resizedData = await readFileAsync(tempFile);
+    const resizedData = await readFile(tempFile);
 
     // Upload the new file to s3
     const targetFilename =
@@ -45,8 +42,8 @@ export async function handler(event) {
     };
 
     await s3.putObject(params).promise();
-    return unlink(tempFile);
+    await unlink(tempFile);
   });
 
   await Promise.all(filesProcessed);
-}
+};
