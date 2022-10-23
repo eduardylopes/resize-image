@@ -25,6 +25,7 @@ exports.handler = async (event) => {
     const tempFile = path.join(tmpdir(), `${uuidv4()}.jpg`);
     const image = await Jimp.read(imageBuffer);
     image.resize(250, 250);
+    image.quality(50);
     await image.writeAsync(tempFile);
 
     // Read the resized file
